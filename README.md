@@ -45,7 +45,7 @@ linux.do里的一个项目——[dsh-plugin-bundle](https://github.com/lili-luo/
 
 ---
 
-## 🚀 部署与使用指南
+## 部署与使用指南
 
 ### 1. 环境准备
 
@@ -162,7 +162,7 @@ npm run start:prod
 ---
 
 
-## 🗺️ 后续更新计划 (Roadmap)
+## 后续更新计划 (Roadmap)
 
 本项目目前完成了核心链路闭环（Initial Commit），接下来的迭代重点包括：
 
@@ -174,6 +174,10 @@ npm run start:prod
 
 ---
 
-## 📄 License
+## 特别鸣谢
+- [linuxdo论坛](https://linux.do/)
+- [dsh-plugin-bundle](https://github.com/lili-luo/dsh-plugin-bundle)给我带来的启发
+
+## License
 
 MIT License
