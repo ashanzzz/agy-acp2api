@@ -1,0 +1,39 @@
+{
+  "name": "agy-acp2api",
+  "version": "0.1.0",
+  "description": "Lightweight ACP-to-OpenAI v1 API Gateway for Antigravity CLI with Full Native Agent Support, Session Prefix Hash Reuse, and Streaming Tool Call State Machine",
+  "type": "module",
+  "bin": {
+    "agy-acp2api": "./bin/cli.js",
+    "agy2api": "./bin/cli.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "assets",
+    "README.md",
+    "settings.example.json"
+  ],
+  "scripts": {
+    "start": "tsx --no-warnings src/index.ts",
+    "start:open": "tsx --no-warnings src/index.ts --open",
+    "start:prod": "node --no-warnings dist/index.js",
+    "dev": "tsx --no-warnings watch src/index.ts",
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "test": "tsx --no-warnings test/e2e.test.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.8",
+    "hono": "^4.7.4",
+    "jsonrepair": "^3.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}

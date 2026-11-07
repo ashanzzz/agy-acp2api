@@ -1,0 +1,524 @@
+import { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import readline from "node:readline";
+import { config } from "../config.js";
+import { telemetryStore } from "../telemetry/metrics-store.js";
+import {
+  AcpConfigOption,
+  AcpModelInfo,
+  AcpPromptResult,
+  AcpSessionNewResult,
+  AcpSessionUpdateParams,
+  JsonRpcResponse,
+} from "../types/acp.js";
+import { CcpaModelSniffer } from "./ccpa-sniffer.js";
+import {
+  cleanupWorkerSandbox,
+  createWorkerSandbox,
+  WorkerSandboxEnv,
+} from "./sandbox.js";
+
+export interface PromptStreamCallbacks {
+  onThoughtChunk: (text: string) => void;
+  onMessageChunk: (text: string) => void;
+  onNativeToolCall?: (toolName: string, rawInput: unknown) => void;
+  onActualModelDetected?: (actualModelVersion: string) => void;
+}
+
+export interface ExtendedPromptExecutionResult extends AcpPromptResult {
+  ttftMs: number;
+  durationMs: number;
+  actualModelVersion: string;
+}
+
+interface PendingRpc {
+  resolve: (val: any) => void;
+  reject: (err: Error) => void;
+  timer: NodeJS.Timeout;
+}
+
+export type WorkerState = "STARTING" | "IDLE" | "BUSY" | "DEAD";
+
+export class AcpWorker {
+  public readonly id: string;
+  public readonly sandbox: WorkerSandboxEnv;
+  public readonly createdAt: number = Date.now();
+  public state: WorkerState = "STARTING";
+  public lastUsedAt: number = Date.now();
+  public availableModels: AcpModelInfo[] = [];
+  public totalRequestsHandled: number = 0;
+
+  private proc: ChildProcessWithoutNullStreams | null = null;
+  private sniffer: CcpaModelSniffer = new CcpaModelSniffer();
+  private rpcIdCounter = 1;
+  private pendingRpcs = new Map<number | string, PendingRpc>();
+  private activeStreamListeners = new Map<string, PromptStreamCallbacks>();
+  private activeSessions = new Set<string>();
+  private sessionAssignedModel = new Map<string, string>();
+  private sessionConfirmedConfig = new Map<
+    string,
+    { model: string; thoughtLevel: string }
+  >();
+  private onDeathCallback?: (workerId: string) => void;
+
+  constructor(id: string, onDeath?: (workerId: string) => void) {
+    this.id = id;
+    this.sandbox = createWorkerSandbox(id);
+    this.onDeathCallback = onDeath;
+  }
+
+  public async start(): Promise<void> {
+    const snifferPort = await this.sniffer.start((detectedVer) => {
+      for (const listener of this.activeStreamListeners.values()) {
+        listener.onActualModelDetected?.(detectedVer);
+      }
+    });
+
+    const args = [
+      "acp",
+      "--sandbox",
+      "--include-default-customizations=false",
+      `--app-data-dir=${this.sandbox.relAppDataDir}`,
+      `--cloud_code_endpoint=http://127.0.0.1:${snifferPort}`,
+    ];
+
+    this.proc = spawn(config.agyBin, args, {
+      cwd: this.sandbox.jailCwd,
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+    });
+
+    this.proc.on("exit", () => {
+      this.handleProcessDeath(
+        new Error(`Worker ${this.id} process exited unexpectedly`)
+      );
+    });
+
+    this.proc.on("error", (err) => {
+      this.handleProcessDeath(err);
+    });
+
+    const rl = readline.createInterface({
+      input: this.proc.stdout,
+      crlfDelay: Infinity,
+    });
+
+    rl.on("line", (line) => {
+      this.handleStdoutLine(line);
+    });
+
+    // Drain stderr silently so pipe never blocks
+    this.proc.stderr.on("data", () => {});
+
+    // Perform ACP JSON-RPC handshake
+    await this.sendRpc("initialize", {
+      protocolVersion: 1,
+      clientCapabilities: {},
+    });
+
+    this.state = "IDLE";
+    this.lastUsedAt = Date.now();
+  }
+
+  public getPid(): number | null {
+    return this.proc?.pid ?? null;
+  }
+
+  public getSnifferPort(): number {
+    return this.sniffer.getPort();
+  }
+
+  public getActiveSessionIds(): string[] {
+    return Array.from(this.activeSessions);
+  }
+
+  public hasSession(sessionId: string): boolean {
+    return this.activeSessions.has(sessionId);
+  }
+
+  /**
+   * Creates a new ACP session on this worker in native `default` mode (no plan/build switching),
+   * sets the target `acpModelId`, and injects `<system_override>` + external tool schemas.
+   */
+  public async createSession(
+    systemPromptAppend: string,
+    acpModelId: string
+  ): Promise<string> {
+    const res = await this.sendRpc<AcpSessionNewResult>("session/new", {
+      cwd: this.sandbox.jailCwd,
+      mcpServers: [],
+      _meta: {
+        antigravity: {
+          systemPrompt: {
+            append: systemPromptAppend,
+          },
+        },
+      },
+    });
+
+    const sessionId = res.sessionId;
+    this.activeSessions.add(sessionId);
+
+    if (res.models?.availableModels?.length) {
+      this.availableModels = res.models.availableModels;
+    }
+
+    if (res.configOptions) {
+      this.updateConfirmedConfigFromOptions(sessionId, res.configOptions);
+    }
+
+    await this.ensureSessionModel(sessionId, acpModelId);
+
+    return sessionId;
+  }
+
+  /**
+   * Ensures the session is configured to use `acpModelId`.
+   * If a reused session requests a different thinking effort variant (e.g. `low` -> `high`),
+   * calls `session/set_model` dynamically on the existing session.
+   */
+  public async ensureSessionModel(
+    sessionId: string,
+    acpModelId: string
+  ): Promise<void> {
+    if (!acpModelId) return;
+    if (this.sessionAssignedModel.get(sessionId) === acpModelId) {
+      return;
+    }
+
+    try {
+      await this.sendRpc("session/set_model", {
+        sessionId,
+        modelId: acpModelId,
+      });
+      this.sessionAssignedModel.set(sessionId, acpModelId);
+    } catch {
+      // Non-fatal if modelId falls back to default
+    }
+  }
+
+  /**
+   * Executes a `session/prompt` turn on an existing `sessionId`, measuring TTFT,
+   * capturing actual responding modelVersion via the local CCPA sniffer + ACP config updates,
+   * and returning token + cache usage.
+   */
+  public async runPrompt(
+    sessionId: string,
+    promptText: string,
+    acpModelId: string,
+    callbacks: PromptStreamCallbacks,
+    abortSignal?: AbortSignal
+  ): Promise<ExtendedPromptExecutionResult> {
+    await this.ensureSessionModel(sessionId, acpModelId);
+
+    this.sniffer.resetTurnModel();
+    const startTime = Date.now();
+    let firstTokenTime: number | null = null;
+
+    const wrappedCallbacks: PromptStreamCallbacks = {
+      onThoughtChunk: (text) => {
+        if (firstTokenTime === null) {
+          firstTokenTime = Date.now();
+        }
+        callbacks.onThoughtChunk(text);
+      },
+      onMessageChunk: (text) => {
+        if (firstTokenTime === null) {
+          firstTokenTime = Date.now();
+        }
+        callbacks.onMessageChunk(text);
+      },
+      onNativeToolCall: callbacks.onNativeToolCall,
+      onActualModelDetected: callbacks.onActualModelDetected,
+    };
+
+    this.activeStreamListeners.set(sessionId, wrappedCallbacks);
+
+    const onAbort = () => {
+      this.sendNotification("session/cancel", { sessionId });
+    };
+
+    if (abortSignal) {
+      if (abortSignal.aborted) {
+        onAbort();
+      } else {
+        abortSignal.addEventListener("abort", onAbort, { once: true });
+      }
+    }
+
+    try {
+      const result = await this.sendRpc<AcpPromptResult>(
+        "session/prompt",
+        {
+          sessionId,
+          prompt: [{ type: "text", text: promptText }],
+        },
+        config.requestTimeoutMs
+      );
+
+      const endTime = Date.now();
+      const durationMs = endTime - startTime;
+      const ttftMs =
+        firstTokenTime !== null ? firstTokenTime - startTime : durationMs;
+
+      this.totalRequestsHandled++;
+      const actualModelVersion = this.resolveActualModelString(
+        sessionId,
+        acpModelId
+      );
+
+      return {
+        ...result,
+        ttftMs,
+        durationMs,
+        actualModelVersion,
+      };
+    } finally {
+      if (abortSignal) {
+        abortSignal.removeEventListener("abort", onAbort);
+      }
+      this.activeStreamListeners.delete(sessionId);
+      this.lastUsedAt = Date.now();
+    }
+  }
+
+  public resolveActualModelString(
+    sessionId: string,
+    fallbackAcpModelId: string
+  ): string {
+    const upstreamModel = this.sniffer.getDetectedModelVersion();
+    const confirmed = this.sessionConfirmedConfig.get(sessionId);
+
+    if (upstreamModel && upstreamModel !== "gemini-3.5-flash-lite") {
+      return upstreamModel;
+    }
+
+    if (confirmed?.model) {
+      return confirmed.model;
+    }
+
+    return upstreamModel || fallbackAcpModelId;
+  }
+
+  public async closeSession(sessionId: string): Promise<void> {
+    if (!this.activeSessions.has(sessionId)) return;
+    this.activeSessions.delete(sessionId);
+    this.sessionAssignedModel.delete(sessionId);
+    this.sessionConfirmedConfig.delete(sessionId);
+    telemetryStore.markSessionClosed(sessionId);
+    try {
+      await this.sendRpc("session/close", { sessionId }, 5000);
+    } catch {}
+  }
+
+  public destroy(): void {
+    this.state = "DEAD";
+    telemetryStore.markWorkerSessionsClosed(this.id);
+    for (const [, pending] of this.pendingRpcs) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error(`Worker ${this.id} destroyed`));
+    }
+    this.pendingRpcs.clear();
+    this.activeStreamListeners.clear();
+    this.activeSessions.clear();
+    this.sessionAssignedModel.clear();
+    this.sessionConfirmedConfig.clear();
+
+    this.sniffer.stop();
+
+    if (this.proc) {
+      try {
+        this.proc.kill("SIGKILL");
+      } catch {}
+      this.proc = null;
+    }
+
+    cleanupWorkerSandbox(this.sandbox);
+  }
+
+  private updateConfirmedConfigFromOptions(
+    sessionId: string,
+    options: AcpConfigOption[]
+  ): void {
+    const current = this.sessionConfirmedConfig.get(sessionId) || {
+      model: "",
+      thoughtLevel: "",
+    };
+    for (const opt of options) {
+      if (opt.id === "model" && opt.currentValue) {
+        current.model = opt.currentValue;
+      } else if (opt.id === "thought_level" && opt.currentValue) {
+        current.thoughtLevel = opt.currentValue;
+      }
+    }
+    this.sessionConfirmedConfig.set(sessionId, current);
+  }
+
+  private handleStdoutLine(line: string): void {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("{")) return;
+
+    let msg: Record<string, any>;
+    try {
+      msg = JSON.parse(trimmed);
+    } catch {
+      return;
+    }
+
+    // 1. Handle incoming JSON-RPC Requests from ACP Server (`session/request_permission`)
+    if (typeof msg.method === "string" && msg.id !== undefined) {
+      this.handleServerRequest(msg.id, msg.method, msg.params || {});
+      return;
+    }
+
+    // 2. Handle incoming JSON-RPC Notifications (`session/update`)
+    if (msg.method === "session/update" && msg.params) {
+      this.handleSessionUpdate(msg.params as AcpSessionUpdateParams);
+      return;
+    }
+
+    // 3. Handle JSON-RPC Responses to our requests
+    if (msg.id !== undefined) {
+      const pending = this.pendingRpcs.get(msg.id);
+      if (!pending) return;
+      this.pendingRpcs.delete(msg.id);
+      clearTimeout(pending.timer);
+
+      const rpcRes = msg as JsonRpcResponse;
+      if (rpcRes.error) {
+        pending.reject(
+          new Error(
+            `ACP RPC Error [${rpcRes.error.code}]: ${rpcRes.error.message}`
+          )
+        );
+      } else {
+        pending.resolve(rpcRes.result);
+      }
+    }
+  }
+
+  private handleServerRequest(
+    id: number | string,
+    method: string,
+    params: Record<string, any>
+  ): void {
+    if (method === "session/request_permission") {
+      const options: Array<{ optionId: string; kind?: string }> =
+        params?.options || [];
+      const rejectOpt = options.find(
+        (o) =>
+          o.kind === "reject_once" ||
+          o.kind === "reject_always" ||
+          o.optionId?.toLowerCase().includes("reject")
+      );
+
+      const resultPayload = rejectOpt
+        ? { outcome: { outcome: "selected", optionId: rejectOpt.optionId } }
+        : { outcome: { outcome: "cancelled" } };
+
+      this.writeJson({
+        jsonrpc: "2.0",
+        id,
+        result: resultPayload,
+      });
+
+      if (params?.sessionId) {
+        this.sendNotification("session/cancel", {
+          sessionId: params.sessionId,
+        });
+      }
+      return;
+    }
+
+    this.writeJson({
+      jsonrpc: "2.0",
+      id,
+      error: {
+        code: -32601,
+        message: `Client method '${method}' is disabled by agy2api read-only sandbox.`,
+      },
+    });
+  }
+
+  private handleSessionUpdate(params: AcpSessionUpdateParams): void {
+    if (!params.update) return;
+    const { sessionUpdate, content, configOptions } = params.update;
+
+    if (sessionUpdate === "config_option_update" && Array.isArray(configOptions)) {
+      this.updateConfirmedConfigFromOptions(params.sessionId, configOptions);
+    }
+
+    const listener = this.activeStreamListeners.get(params.sessionId);
+    if (!listener) return;
+
+    if (sessionUpdate === "agent_thought_chunk" && content?.text) {
+      listener.onThoughtChunk(content.text);
+    } else if (sessionUpdate === "agent_message_chunk" && content?.text) {
+      listener.onMessageChunk(content.text);
+    } else if (sessionUpdate === "tool_call") {
+      const title =
+        params.update.title || params.update.kind || "unknown_native_tool";
+      listener.onNativeToolCall?.(title, params.update.rawInput);
+    }
+  }
+
+  private sendRpc<T = any>(
+    method: string,
+    params: Record<string, unknown>,
+    timeoutMs: number = 60_000
+  ): Promise<T> {
+    if (this.state === "DEAD" || !this.proc?.stdin.writable) {
+      return Promise.reject(new Error(`Worker ${this.id} is not writable`));
+    }
+
+    const id = this.rpcIdCounter++;
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingRpcs.delete(id);
+        reject(new Error(`ACP RPC '${method}' timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+
+      this.pendingRpcs.set(id, { resolve, reject, timer });
+      this.writeJson({
+        jsonrpc: "2.0",
+        id,
+        method,
+        params,
+      });
+    });
+  }
+
+  private sendNotification(
+    method: string,
+    params: Record<string, unknown>
+  ): void {
+    this.writeJson({
+      jsonrpc: "2.0",
+      method,
+      params,
+    });
+  }
+
+  private writeJson(payload: Record<string, unknown>): void {
+    if (this.proc?.stdin.writable) {
+      this.proc.stdin.write(JSON.stringify(payload) + "\n");
+    }
+  }
+
+  private handleProcessDeath(err: Error): void {
+    if (this.state === "DEAD") return;
+    this.state = "DEAD";
+    telemetryStore.markWorkerSessionsClosed(this.id);
+    for (const [, pending] of this.pendingRpcs) {
+      clearTimeout(pending.timer);
+      pending.reject(err);
+    }
+    this.pendingRpcs.clear();
+    this.activeStreamListeners.clear();
+    this.activeSessions.clear();
+    this.sessionAssignedModel.clear();
+    this.sessionConfirmedConfig.clear();
+    this.sniffer.stop();
+    cleanupWorkerSandbox(this.sandbox);
+    this.onDeathCallback?.(this.id);
+  }
+}

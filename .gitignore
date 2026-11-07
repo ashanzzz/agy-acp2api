@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Runtime telemetry SQLite database & WAL files
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Local user runtime settings
+settings.json
+
+# Temporary test files & logs
+.tmp*
+*.log
+npm-debug.log*
+
+# OS & IDE files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
