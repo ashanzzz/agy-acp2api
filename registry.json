@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "plugins": [
+    {
+      "id": "agy-acp2api",
+      "name": "agy-acp2api",
+      "description": "Bridges the local Antigravity ACP Gateway (agy-acp2api) and embeds its Material Design 3 web console into CLIProxyAPI.",
+      "author": "chengdidididi",
+      "version": "0.1.0",
+      "repository": "https://github.com/chengdidididi/agy-acp2api",
+      "homepage": "https://github.com/chengdidididi/agy-acp2api",
+      "license": "MIT",
+      "tags": [
+        "Provider",
+        "Management"
+      ],
+      "locales": {
+        "zh-CN": {
+          "name": "agy-acp2api 网关控制台",
+          "description": "将本地 Antigravity ACP 网关与 MD3 Web 控制台桥接至 CLIProxyAPI，支持在 CPA 管理后台直接渲染控制台并调用模型。"
+        }
+      }
+    }
+  ]
+}

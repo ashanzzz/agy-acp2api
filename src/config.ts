@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 export type ThinkingLevel = "low" | "medium" | "high";
+export type UiLayout = "side" | "top";
 
 export interface GatewayConfig {
   host: string;
@@ -15,6 +16,7 @@ export interface GatewayConfig {
   workerIdleTtlMs: number;
   sessionTtlMs: number;
   requestTimeoutMs: number;
+  uiLayout: UiLayout;
 }
 
 const SETTINGS_FILE_PATH = path.resolve(process.cwd(), "settings.json");
@@ -38,6 +40,7 @@ const defaultConfig: GatewayConfig = {
     process.env.AGY_REQUEST_TIMEOUT_MS || "300000",
     10
   ),
+  uiLayout: (process.env.AGY_UI_LAYOUT as UiLayout) || "side",
 };
 
 function loadPersistedSettings(): Partial<GatewayConfig> {
@@ -103,6 +106,9 @@ export function updateGatewayConfig(
   ) {
     config.requestTimeoutMs = Math.floor(patch.requestTimeoutMs);
   }
+  if (patch.uiLayout && ["side", "top"].includes(patch.uiLayout)) {
+    config.uiLayout = patch.uiLayout;
+  }
 
   // Persist to settings.json
   try {
@@ -115,6 +121,7 @@ export function updateGatewayConfig(
       workerIdleTtlMs: config.workerIdleTtlMs,
       sessionTtlMs: config.sessionTtlMs,
       requestTimeoutMs: config.requestTimeoutMs,
+      uiLayout: config.uiLayout,
     };
     fs.writeFileSync(
       SETTINGS_FILE_PATH,

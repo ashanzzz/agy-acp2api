@@ -13,7 +13,7 @@ const DASHBOARD_HTML = String.raw`<!DOCTYPE html>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>agy2api</title>
-<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="icon" type="image/svg+xml" href="./favicon.svg" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,600&family=Roboto+Mono:wght@400;500&display=swap" />
@@ -23,6 +23,8 @@ const DASHBOARD_HTML = String.raw`<!DOCTYPE html>
     var t = localStorage.getItem("agy-theme");
     if (!t) t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
     document.documentElement.setAttribute("data-theme", t);
+    var l = localStorage.getItem("agy-layout");
+    if (l === "top" || l === "side") document.documentElement.setAttribute("data-layout", l);
   })();
 </script>
 <style>
@@ -331,35 +333,60 @@ const DASHBOARD_HTML = String.raw`<!DOCTYPE html>
   /* ---------- Responsive: drawer -> rail -> bottom bar ---------- */
   @media (max-width: 1280px) { .kpis { grid-template-columns:repeat(2, minmax(0,1fr)); } .home-bottom { grid-template-columns:1fr; } }
   @media (max-width: 1000px) {
-    .drawer { width:88px; align-items:center; padding:12px 0; gap:12px; }
-    .brand { padding:0; justify-content:center; margin-bottom:0; }
-    .brand-name { display:none; }
-    .nav-item { flex-direction:column; height:auto; padding:0; gap:4px; width:80px; font-size:12px; background:none !important; }
-    .nav-ic { width:56px; height:32px; border-radius:16px; transition:background .15s; }
-    .nav-item:hover .nav-ic { background:color-mix(in srgb, var(--on-surface) 8%, transparent); }
-    .nav-item.active .nav-ic { background:var(--secondary-container); }
+    html:not([data-layout="top"]) .drawer { width:88px; align-items:center; padding:12px 0; gap:12px; }
+    html:not([data-layout="top"]) .brand { padding:0; justify-content:center; margin-bottom:0; }
+    html:not([data-layout="top"]) .brand-name { display:none; }
+    html:not([data-layout="top"]) .nav-item { flex-direction:column; height:auto; padding:0; gap:4px; width:80px; font-size:12px; background:none !important; }
+    html:not([data-layout="top"]) .nav-ic { width:56px; height:32px; border-radius:16px; transition:background .15s; }
+    html:not([data-layout="top"]) .nav-item:hover .nav-ic { background:color-mix(in srgb, var(--on-surface) 8%, transparent); }
+    html:not([data-layout="top"]) .nav-item.active .nav-ic { background:var(--secondary-container); }
     .two { grid-template-columns:1fr; }
   }
   @media (max-width: 640px) {
     .app { flex-direction:column; }
-    .drawer { position:fixed; top:auto; bottom:0; left:0; right:0; width:100%; height:80px; flex-direction:row; justify-content:space-around; z-index:20; padding:0; }
-    .brand { display:none; }
-    .content { padding:0 16px 104px; }
+    html:not([data-layout="top"]) .drawer { position:fixed; top:auto; bottom:0; left:0; right:0; width:100%; height:80px; flex-direction:row; justify-content:space-around; z-index:20; padding:0; }
+    html:not([data-layout="top"]) .brand { display:none; }
+    html:not([data-layout="top"]) .content { padding:0 16px 104px; }
     .kpis { grid-template-columns:1fr; }
     .w-stats { grid-template-columns:repeat(2, minmax(0,1fr)); }
     .search { min-width:0; flex:1; }
-    .savebar { bottom:96px; right:16px; }
+    html:not([data-layout="top"]) .savebar { bottom:96px; right:16px; }
+  }
+
+  /* ---------- Top Layout (CPA Plugin Adaptation Mode) ---------- */
+  .top-actions { display:none; align-items:center; gap:8px; margin-left:auto; }
+  html[data-layout="top"] .app { flex-direction:column; }
+  html[data-layout="top"] .drawer {
+    width:100%; height:64px; position:sticky; top:0; z-index:20;
+    flex-direction:row; align-items:center; padding:0 28px; gap:8px;
+    background:var(--sc-low); border-bottom:1px solid color-mix(in srgb, var(--outline-variant) 50%, transparent);
+  }
+  html[data-layout="top"] .brand { height:40px; padding:0 8px 0 0; margin:0 8px 0 0; }
+  html[data-layout="top"] .nav-item { height:40px; padding:0 16px; border-radius:20px; gap:8px; }
+  html[data-layout="top"] .top-actions { display:flex; }
+  html[data-layout="top"] .topbar { display:none; }
+  html[data-layout="top"] .content { padding:24px 28px 40px; max-width:1600px; width:100%; margin:0 auto; }
+  @media (max-width: 720px) {
+    html[data-layout="top"] .drawer { padding:0 12px; gap:4px; }
+    html[data-layout="top"] .brand-name { display:none; }
+    html[data-layout="top"] .nav-item { padding:0 12px; font-size:13px; }
+    html[data-layout="top"] .content { padding:16px 16px 40px; }
   }
 </style>
 </head>
 <body>
 <div class="app">
   <nav class="drawer">
-    <div class="brand"><img class="brand-logo" src="/favicon.svg" alt="" /><span class="brand-name">agy2api</span></div>
+    <div class="brand"><img class="brand-logo" src="./favicon.svg" alt="" /><span class="brand-name">agy2api</span></div>
     <a class="nav-item" href="#home" data-page="home"><span class="nav-ic"><span class="ms">space_dashboard</span></span><span>首页</span></a>
     <a class="nav-item" href="#traffic" data-page="traffic"><span class="nav-ic"><span class="ms">monitoring</span></span><span>请求</span></a>
     <a class="nav-item" href="#runtime" data-page="runtime"><span class="nav-ic"><span class="ms">memory</span><span class="badge" id="badge-rt"></span></span><span>运行</span></a>
     <a class="nav-item" href="#settings" data-page="settings"><span class="nav-ic"><span class="ms">tune</span></span><span>设置</span></a>
+    <div class="top-actions">
+      <span class="chip t-plain" id="sync-top" data-tip="连接中"><span class="dot" id="sync-dot-top"></span><span id="sync-t-top">…</span></span>
+      <button class="icon-btn" data-act="refresh" data-tip="刷新"><span class="ms">refresh</span></button>
+      <button class="icon-btn" data-act="theme" data-tip="切换主题"><span class="ms" id="theme-ic-top">dark_mode</span></button>
+    </div>
   </nav>
 
   <main class="content">
@@ -488,6 +515,16 @@ const DASHBOARD_HTML = String.raw`<!DOCTYPE html>
             </div>
           </div>
         </div>
+
+        <div class="card">
+          <div class="card-h"><span class="ic sm t-secondary"><span class="ms">dashboard_customize</span></span><span>界面适配</span></div>
+          <div class="field-l"><label>导航栏位置（CPA 插件面板推荐顶部）</label>
+            <div class="seg full" id="f-layout">
+              <button type="button" data-act="layout-pick" data-v="side"><span class="ms">dock_to_right</span>左侧标准</button>
+              <button type="button" data-act="layout-pick" data-v="top"><span class="ms">dock_to_bottom</span>顶部 CPA 适配</button>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="savebar" id="savebar">
         <button class="btn text" data-act="revert"><span class="ms">undo</span>还原</button>
@@ -513,10 +550,50 @@ const DASHBOARD_HTML = String.raw`<!DOCTYPE html>
 <div class="tip" id="tip"></div>
 
 <script>
-  var S = { d: null, page: "home", tab: "req", q: "", sheet: null, cfgReady: false, dirty: false, level: "medium", last: 0 };
+  var S = { d: null, page: "home", tab: "req", q: "", sheet: null, cfgReady: false, dirty: false, level: "medium", layout: localStorage.getItem("agy-layout") || "side", last: 0 };
   var TITLES = { home: "首页", traffic: "请求", runtime: "运行", settings: "设置" };
   var LV = { low: 1, medium: 2, high: 3 };
   function $(id) { return document.getElementById(id); }
+
+  /* ---------- CPA Panel Auth & Relative Path Helper ---------- */
+  function getCpaManagementKey() {
+    try {
+      var raw = localStorage.getItem("cli-proxy-auth");
+      if (!raw) return "";
+      var prefix = "enc::v1::";
+      var decoded = raw;
+      if (raw.indexOf(prefix) === 0) {
+        var bin = atob(raw.slice(prefix.length));
+        var data = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) data[i] = bin.charCodeAt(i);
+        var keyStr = "cli-proxy-api-webui::secure-storage|" + location.host + "|" + navigator.userAgent;
+        var keyBytes = new TextEncoder().encode(keyStr);
+        var out = new Uint8Array(data.length);
+        for (var j = 0; j < data.length; j++) out[j] = data[j] ^ keyBytes[j % keyBytes.length];
+        decoded = new TextDecoder().decode(out);
+      }
+      var parsed = JSON.parse(decoded);
+      var st = (parsed && parsed.state) ? parsed.state : parsed;
+      return (st && typeof st.managementKey === "string") ? st.managementKey : "";
+    } catch (e) {
+      return "";
+    }
+  }
+  function resolveApiUrl(relPath) {
+    var p = relPath.replace(/^\.?\//, "");
+    var loc = location.pathname;
+    var cpaPrefix = "/v0/resource/plugins/";
+    if (loc.indexOf(cpaPrefix) === 0) {
+      var rest = loc.slice(cpaPrefix.length);
+      var slashIdx = rest.indexOf("/");
+      var pluginId = slashIdx >= 0 ? rest.slice(0, slashIdx) : rest;
+      if (pluginId && getCpaManagementKey()) {
+        return "/v0/management/plugins/" + pluginId + "/" + p;
+      }
+    }
+    var baseDir = loc.endsWith("/") ? loc : loc.replace(/\/[^/]*$/, "/");
+    return baseDir + p;
+  }
 
   /* ---------- formatters ---------- */
   function esc(v) {
@@ -857,16 +934,35 @@ const DASHBOARD_HTML = String.raw`<!DOCTYPE html>
   function renderLevel() {
     document.querySelectorAll("#f-level button").forEach(function (b) { b.classList.toggle("on", b.getAttribute("data-v") === S.level); });
   }
+  function renderLayout() {
+    document.querySelectorAll("#f-layout button").forEach(function (b) { b.classList.toggle("on", b.getAttribute("data-v") === S.layout); });
+  }
+  function applyLayout(l) {
+    if (l !== "top" && l !== "side") l = "side";
+    S.layout = l;
+    document.documentElement.setAttribute("data-layout", l);
+    localStorage.setItem("agy-layout", l);
+    renderLayout();
+  }
   function initSettings(d) {
-    $("f-url").value = location.origin + "/v1";
+    var c = d.config;
+    if (location.pathname.indexOf("/v0/resource/plugins/") === 0 && c.port) {
+      $("f-url").value = location.protocol + "//" + location.hostname + ":" + c.port + "/v1";
+    } else {
+      $("f-url").value = location.origin + "/v1";
+    }
     if (S.dirty) return;
     fillModels(d);
     if (S.cfgReady) return;
-    var c = d.config;
     $("f-apiKey").value = c.apiKey || "";
     $("f-model").value = c.defaultModel;
     S.level = c.defaultThinkingLevel || "medium";
     renderLevel();
+    if (c.uiLayout === "top" || c.uiLayout === "side") {
+      applyLayout(c.uiLayout);
+    } else {
+      renderLayout();
+    }
     $("f-min").value = c.minWorkers;
     $("f-max").value = c.maxWorkers;
     $("f-idle").value = Math.round(c.workerIdleTtlMs / 1000);
@@ -885,9 +981,10 @@ const DASHBOARD_HTML = String.raw`<!DOCTYPE html>
       workerIdleTtlMs: Math.round(Number($("f-idle").value) * 1000),
       sessionTtlMs: Math.round(Number($("f-sess").value) * 60000),
       requestTimeoutMs: Math.round(Number($("f-timeout").value) * 1000),
+      uiLayout: S.layout,
     };
     if (!p.apiKey) { snack("API Key 不能为空", true); return; }
-    await api("POST", "/api/admin/config", p);
+    await api("POST", "./api/admin/config", p);
     setDirty(false);
     S.cfgReady = false;
     snack("已保存");
@@ -978,7 +1075,11 @@ const DASHBOARD_HTML = String.raw`<!DOCTYPE html>
 
   /* ---------- infra ---------- */
   async function api(method, url, body) {
-    var r = await fetch(url, { method: method, headers: body ? { "Content-Type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined });
+    var hdrs = {};
+    if (body) hdrs["Content-Type"] = "application/json";
+    var mgmtKey = getCpaManagementKey();
+    if (mgmtKey) hdrs["Authorization"] = "Bearer " + mgmtKey;
+    var r = await fetch(resolveApiUrl(url), { method: method, headers: Object.keys(hdrs).length ? hdrs : undefined, body: body ? JSON.stringify(body) : undefined });
     var j = {};
     try { j = await r.json(); } catch (e) {}
     if (!r.ok || j.status === "error" || j.status === "not_found") throw new Error(j.message || j.status || "HTTP " + r.status);
@@ -1013,15 +1114,30 @@ const DASHBOARD_HTML = String.raw`<!DOCTYPE html>
     document.body.removeChild(ta);
   }
   function setSync(ok) {
-    $("sync-dot").className = "dot " + (ok ? "ok pulse" : "err");
-    $("sync-t").textContent = ok ? "实时" : "离线";
-    $("sync").setAttribute("data-tip", ok ? "更新于 " + clock(S.last) : "连接失败");
+    var cls = "dot " + (ok ? "ok pulse" : "err");
+    var txt = ok ? "实时" : "离线";
+    var tip = ok ? "更新于 " + clock(S.last) : "连接失败";
+    $("sync-dot").className = cls;
+    $("sync-t").textContent = txt;
+    $("sync").setAttribute("data-tip", tip);
+    if ($("sync-dot-top")) {
+      $("sync-dot-top").className = cls;
+      $("sync-t-top").textContent = txt;
+      $("sync-top").setAttribute("data-tip", tip);
+    }
   }
-  function applyTheme() { $("theme-ic").textContent = document.documentElement.getAttribute("data-theme") === "dark" ? "light_mode" : "dark_mode"; }
+  function applyTheme() {
+    var ic = document.documentElement.getAttribute("data-theme") === "dark" ? "light_mode" : "dark_mode";
+    $("theme-ic").textContent = ic;
+    if ($("theme-ic-top")) $("theme-ic-top").textContent = ic;
+  }
 
   function render() {
     var d = S.d;
     if (!d) return;
+    if (!S.cfgReady && d.config && (d.config.uiLayout === "top" || d.config.uiLayout === "side") && d.config.uiLayout !== S.layout) {
+      applyLayout(d.config.uiLayout);
+    }
     var b = $("badge-rt");
     if (d.pool.queuedRequests > 0) { b.textContent = d.pool.queuedRequests; b.className = "badge on err"; }
     else if (d.pool.busyWorkers > 0) { b.textContent = d.pool.busyWorkers; b.className = "badge on"; }
@@ -1034,7 +1150,10 @@ const DASHBOARD_HTML = String.raw`<!DOCTYPE html>
   }
   async function poll() {
     try {
-      var r = await fetch("/api/admin/overview", { cache: "no-store" });
+      var hdrs = {};
+      var mgmtKey = getCpaManagementKey();
+      if (mgmtKey) hdrs["Authorization"] = "Bearer " + mgmtKey;
+      var r = await fetch(resolveApiUrl("./api/admin/overview"), { cache: "no-store", headers: Object.keys(hdrs).length ? hdrs : undefined });
       if (!r.ok) throw new Error("HTTP " + r.status);
       S.d = await r.json();
       S.last = Date.now();
@@ -1073,19 +1192,19 @@ const DASHBOARD_HTML = String.raw`<!DOCTYPE html>
       else if (a === "kill") {
         var id = el.getAttribute("data-id");
         if (await confirmDlg("power_settings_new", "销毁进程", id + " 上的会话将全部关闭", "销毁")) {
-          await api("DELETE", "/api/admin/workers/" + encodeURIComponent(id)); snack("已销毁 " + id); poll();
+          await api("DELETE", "./api/admin/workers?id=" + encodeURIComponent(id)); snack("已销毁 " + id); poll();
         }
       }
       else if (a === "close-sess") {
         e.stopPropagation();
         var sid = el.getAttribute("data-s");
-        await api("DELETE", "/api/admin/sessions/" + encodeURIComponent(el.getAttribute("data-w")) + "/" + encodeURIComponent(sid));
+        await api("DELETE", "./api/admin/sessions?workerId=" + encodeURIComponent(el.getAttribute("data-w")) + "&sessionId=" + encodeURIComponent(sid));
         snack("已关闭 " + sid.slice(0, 8)); poll();
       }
-      else if (a === "spawn") { var j = await api("POST", "/api/admin/workers/spawn"); snack("已启动 " + j.workerId); poll(); }
+      else if (a === "spawn") { var j = await api("POST", "./api/admin/workers/spawn"); snack("已启动 " + j.workerId); poll(); }
       else if (a === "clear") {
         if (await confirmDlg("cleaning_services", "清空会话哈希", "后续请求将新建会话，无法复用已有上下文", "清空")) {
-          await api("POST", "/api/admin/sessions/clear-cache"); snack("已清空"); poll();
+          await api("POST", "./api/admin/sessions/clear-cache"); snack("已清空"); poll();
         }
       }
       else if (a === "copy-url") copyText($("f-url").value);
@@ -1101,6 +1220,12 @@ const DASHBOARD_HTML = String.raw`<!DOCTYPE html>
         $("f-apiKey").value = out; $("f-apiKey").type = "text"; $("key-eye").textContent = "visibility_off"; setDirty(true);
       }
       else if (a === "lv-pick") { S.level = el.getAttribute("data-v"); renderLevel(); setDirty(true); }
+      else if (a === "layout-pick") {
+        var nl = el.getAttribute("data-v");
+        applyLayout(nl);
+        await api("POST", "./api/admin/config", { uiLayout: nl });
+        snack(nl === "top" ? "已切换为顶部 CPA 适配导航" : "已切换为左侧标准导航");
+      }
       else if (a === "step") {
         var inp = $(el.getAttribute("data-for")), v = (Number(inp.value) || 0) + Number(el.getAttribute("data-d"));
         v = Math.max(Number(inp.min), Math.min(Number(inp.max), v)); inp.value = v; setDirty(true);
@@ -1129,6 +1254,7 @@ const DASHBOARD_HTML = String.raw`<!DOCTYPE html>
   document.addEventListener("mouseleave", function () { tipEl.classList.remove("on"); });
 
   applyTheme();
+  applyLayout(S.layout);
   go(location.hash.slice(1) || "home");
   poll();
   setInterval(function () { if (!document.hidden) poll(); }, 2000);

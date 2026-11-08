@@ -1,0 +1,15 @@
+# CLIProxyAPI (CPA) config.yaml 插件配置示例
+plugins:
+  enabled: true
+  dir: "./plugins"
+  configs:
+    agy-acp2api:
+      enabled: true
+      # 本地正在运行的 agy-acp2api 服务地址（完全保留原有本地运行方式）
+      upstream_url: "http://127.0.0.1:8787"
+      # 本地 agy-acp2api 的 API Key
+      api_key: "sk-agy2api-local-key"
+      # 可选：若本地未启动 agy-acp2api，是否由 CPA 插件自动拉起 Node 子进程
+      auto_start: false
+      # 可选：当 auto_start 为 true 时，指定 agy-acp2api 的 dist/index.js 路径
+      agy2api_entry: ""

@@ -383,10 +383,12 @@ async function runIntegrationTest() {
     const dashRes = await fetch(`${baseUrl}/`);
     assert.equal(dashRes.status, 200);
     const dashHtml = await dashRes.text();
-    assert.ok(dashHtml.includes("agy-cpa2api 网关控制台"));
+    assert.ok(dashHtml.includes("agy2api"));
+    assert.ok(dashHtml.includes("顶部 CPA 适配"));
 
     const overviewRes = await fetch(`${baseUrl}/api/admin/overview`);
     const overview = (await overviewRes.json()) as any;
+    assert.equal(overview.config.uiLayout, "side");
     console.log(
       "   -> Telemetry Summary:",
       JSON.stringify(overview.telemetry.summary)

@@ -82,6 +82,18 @@ export function createGatewayApp(pool: WorkerPool): Hono {
     return c.json({ status: ok ? "ok" : "not_found" });
   });
 
+  app.delete("/api/admin/workers", async (c) => {
+    let id = c.req.query("id") || "";
+    if (!id) {
+      try {
+        const body = await c.req.json();
+        id = body?.id || "";
+      } catch {}
+    }
+    const ok = id ? pool.terminateWorker(id) : false;
+    return c.json({ status: ok ? "ok" : "not_found" });
+  });
+
   app.post("/api/admin/sessions/clear-cache", (c) => {
     pool.sessionRegistry.clear();
     return c.json({ status: "ok" });
@@ -91,6 +103,23 @@ export function createGatewayApp(pool: WorkerPool): Hono {
     const workerId = c.req.param("workerId");
     const sessionId = c.req.param("sessionId");
     const ok = await pool.closeWorkerSession(workerId, sessionId);
+    return c.json({ status: ok ? "ok" : "not_found" });
+  });
+
+  app.delete("/api/admin/sessions", async (c) => {
+    let workerId = c.req.query("workerId") || "";
+    let sessionId = c.req.query("sessionId") || "";
+    if (!workerId || !sessionId) {
+      try {
+        const body = await c.req.json();
+        workerId = workerId || body?.workerId || "";
+        sessionId = sessionId || body?.sessionId || "";
+      } catch {}
+    }
+    const ok =
+      workerId && sessionId
+        ? await pool.closeWorkerSession(workerId, sessionId)
+        : false;
     return c.json({ status: ok ? "ok" : "not_found" });
   });
 
