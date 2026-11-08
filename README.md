@@ -24,6 +24,7 @@ linux.do里的一个项目——[dsh-plugin-bundle](https://github.com/lili-luo/
 
 > [!WARNING]
 > **纯 AI 产出声明 (Vibe Coding Disclaimer)**
+> 
 > 本项目当前版本的代码（从核心状态机、进程池沙箱到内嵌的 Web 控制台 UI） **100% 由 AI 生成**。虽然已构建了一些场景的测试，但仍有待继续改进，将在后续迭代中进行人工 Code Review 与重构精简，也欢迎大家进行贡献和提出问题。
 
 ---
@@ -175,7 +176,7 @@ npm run start:prod
 ---
 
 ## 特别鸣谢
-- [linuxdo论坛](https://linux.do/)
+- 感谢 [LINUX DO](https://linux.do/) 社区提供交流与开源推广平台
 - [dsh-plugin-bundle](https://github.com/lili-luo/dsh-plugin-bundle)给我带来的启发
 
 ## License
