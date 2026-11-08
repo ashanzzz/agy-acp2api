@@ -19,6 +19,7 @@ env:
 jobs:
   build:
     name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -103,13 +104,22 @@ jobs:
 
   release:
     name: Release
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && !contains(github.event.head_commit.message, '[skip ci]')
     needs:
       - build
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: cpa-plugin/go.mod
+          cache: true
+          cache-dependency-path: cpa-plugin/go.mod
 
       - name: Download build artifacts
         uses: actions/download-artifact@v4
@@ -117,7 +127,7 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Publish GitHub release
+      - name: Publish GitHub Release & Direct Raw Assets
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -128,7 +138,43 @@ jobs:
           else
             RELEASE_TAG="${DEFAULT_TAG}"
           fi
+          VERSION="${RELEASE_TAG#v}"
           sort dist/*.sha256 > dist/checksums.txt
+
+          # 1. Generate schema_version 2 (direct raw.githubusercontent.com) registry.json
+          RAW_BASE="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/releases-assets"
+          go run ./cpa-plugin/scripts/generate-registry.go \
+            -dist dist \
+            -version "${VERSION}" \
+            -base-url "${RAW_BASE}" \
+            -out dist/registry.json
+
+          # 2. Push zip artifacts + registry.json to releases-assets branch for direct raw download
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          WORK_DIR=$(mktemp -d)
+          cp dist/*.zip dist/checksums.txt dist/registry.json "${WORK_DIR}/"
+          pushd "${WORK_DIR}"
+          git init
+          git checkout -b releases-assets
+          git add .
+          git commit -m "chore: publish direct plugin assets for ${RELEASE_TAG} [skip ci]"
+          git push --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" releases-assets:releases-assets
+          popd
+
+          # 3. Update registry.json on main branch so main/registry.json uses direct raw URLs
+          if [[ "${GITHUB_REF_NAME}" == "main" ]]; then
+            cp dist/registry.json registry.json
+            cp dist/registry.json cpa-plugin/registry.json
+            if ! git diff --quiet registry.json cpa-plugin/registry.json; then
+              git add registry.json cpa-plugin/registry.json
+              git commit -m "chore: update registry.json with direct raw artifact URLs [skip ci]"
+              git push origin HEAD:main
+            fi
+          fi
+
+          # 4. Also update GitHub Release
           if gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
             gh release upload "${RELEASE_TAG}" dist/*.zip dist/checksums.txt --clobber --repo "${GITHUB_REPOSITORY}"
           else
