@@ -9,38 +9,79 @@ export interface WorkerSandboxEnv {
   jailCwd: string;
 }
 
-const AUTH_FILES_TO_CLONE = [
-  "jetski_state.pbtxt",
-  "settings.json",
-  "installation_id",
-];
+const EXCLUDED_WORKER_FILES = new Set([
+  "conversation_summaries.db",
+  "conversation_summaries.db-wal",
+  "conversation_summaries.db-shm",
+  "cli.log",
+  "history.jsonl",
+]);
+
+const EXCLUDED_WORKER_DIRS = new Set([
+  "annotations",
+  "bin",
+  "brain",
+  "builtin",
+  "cache",
+  "conversations",
+  "crashes",
+  "implicit",
+  "log",
+  "presence",
+  "updater",
+]);
+
+/**
+ * Synchronizes all auth, token, and configuration files from `~/.gemini/antigravity-cli`
+ * into the worker's isolated `~/.gemini/agy2api-worker-{id}` directory.
+ * On headless Linux (SSH / no desktop keyring), `agy` stores OAuth tokens using
+ * file-based token storage (`cliFileTokenStorage`) inside `antigravity-cli`.
+ */
+export function syncWorkerSandboxAuth(absAppDataDir: string): void {
+  const geminiBaseDir = path.join(os.homedir(), ".gemini");
+  const primaryCliDir = path.join(geminiBaseDir, "antigravity-cli");
+  if (!fs.existsSync(primaryCliDir)) return;
+
+  try {
+    const entries = fs.readdirSync(primaryCliDir, { withFileTypes: true });
+    for (const entry of entries) {
+      const srcPath = path.join(primaryCliDir, entry.name);
+      const destPath = path.join(absAppDataDir, entry.name);
+      if (entry.isFile()) {
+        if (EXCLUDED_WORKER_FILES.has(entry.name)) continue;
+        try {
+          fs.copyFileSync(srcPath, destPath);
+        } catch {
+          // Ignore if file is transiently locked
+        }
+      } else if (entry.isDirectory()) {
+        if (EXCLUDED_WORKER_DIRS.has(entry.name)) continue;
+        try {
+          fs.cpSync(srcPath, destPath, { recursive: true, force: true });
+        } catch {
+          // Ignore transient copy errors
+        }
+      }
+    }
+  } catch {
+    // Ignore directory read errors
+  }
+}
 
 /**
  * Creates an isolated runtime environment for an `agy acp` worker process:
- * 1. `~/.gemini/agy2api-worker-{id}` with cloned OAuth credentials (`jetski_state.pbtxt`)
+ * 1. `~/.gemini/agy2api-worker-{id}` with cloned OAuth credentials & CLI token files
  *    so each worker has its own isolated SQLite DB (`conversation_summaries.db`) and logs.
  * 2. An empty read-only temporary directory (`jailCwd`) used as `cwd` for `session/new`.
  */
 export function createWorkerSandbox(workerId: string): WorkerSandboxEnv {
   const geminiBaseDir = path.join(os.homedir(), ".gemini");
-  const primaryCliDir = path.join(geminiBaseDir, "antigravity-cli");
 
   const relAppDataDir = `agy2api-worker-${workerId}`;
   const absAppDataDir = path.join(geminiBaseDir, relAppDataDir);
   fs.mkdirSync(absAppDataDir, { recursive: true });
 
-  // Clone lightweight auth & config files from primary antigravity-cli dir
-  for (const fileName of AUTH_FILES_TO_CLONE) {
-    const srcPath = path.join(primaryCliDir, fileName);
-    const destPath = path.join(absAppDataDir, fileName);
-    if (fs.existsSync(srcPath)) {
-      try {
-        fs.copyFileSync(srcPath, destPath);
-      } catch {
-        // Ignore if file is transiently locked
-      }
-    }
-  }
+  syncWorkerSandboxAuth(absAppDataDir);
 
   // Create empty read-only jail directory for `session/new` cwd
   const jailCwd = fs.mkdtempSync(path.join(os.tmpdir(), `agy2api-jail-${workerId}-`));

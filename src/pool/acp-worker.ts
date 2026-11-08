@@ -14,6 +14,7 @@ import { CcpaModelSniffer } from "./ccpa-sniffer.js";
 import {
   cleanupWorkerSandbox,
   createWorkerSandbox,
+  syncWorkerSandboxAuth,
   WorkerSandboxEnv,
 } from "./sandbox.js";
 
@@ -81,8 +82,16 @@ export class AcpWorker {
       `--cloud_code_endpoint=http://127.0.0.1:${snifferPort}`,
     ];
 
+    const childEnv: NodeJS.ProcessEnv = {
+      ...process.env,
+      ...(process.platform === "linux"
+        ? { SSH_CONNECTION: process.env.SSH_CONNECTION || "127.0.0.1 0 127.0.0.1 22" }
+        : {}),
+    };
+
     this.proc = spawn(config.agyBin, args, {
       cwd: this.sandbox.jailCwd,
+      env: childEnv,
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
     });
@@ -143,6 +152,7 @@ export class AcpWorker {
     systemPromptAppend: string,
     acpModelId: string
   ): Promise<string> {
+    syncWorkerSandboxAuth(this.sandbox.absAppDataDir);
     const res = await this.sendRpc<AcpSessionNewResult>("session/new", {
       cwd: this.sandbox.jailCwd,
       mcpServers: [],

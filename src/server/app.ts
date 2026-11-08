@@ -249,7 +249,7 @@ export function createGatewayApp(pool: WorkerPool): Hono {
     const created = Math.floor(Date.now() / 1000);
 
     // Acquire Worker using `baseModelId` for Session Prefix Hash affinity
-    const lease = await pool.acquireForRequest(
+    let lease = await pool.acquireForRequest(
       baseModelId,
       body.tools,
       body.messages
@@ -266,10 +266,24 @@ export function createGatewayApp(pool: WorkerPool): Hono {
           body.tools,
           body.tool_choice
         );
-        sessionId = await lease.worker.createSession(
-          compiled.systemPromptAppend,
-          acpModelId
-        );
+        try {
+          sessionId = await lease.worker.createSession(
+            compiled.systemPromptAppend,
+            acpModelId
+          );
+        } catch (firstErr: any) {
+          // If the worker had cached an unauthenticated state before login, recycle it and retry once
+          pool.terminateWorker(lease.worker.id);
+          lease = await pool.acquireForRequest(
+            baseModelId,
+            body.tools,
+            body.messages
+          );
+          sessionId = await lease.worker.createSession(
+            compiled.systemPromptAppend,
+            acpModelId
+          );
+        }
         telemetryStore.registerNewSession(
           sessionId,
           lease.worker.id,
@@ -280,7 +294,7 @@ export function createGatewayApp(pool: WorkerPool): Hono {
         promptText = compiled.promptText;
       }
     } catch (err: any) {
-      pool.releaseWorker(lease.worker);
+      pool.terminateWorker(lease.worker.id);
       return c.json(
         {
           error: {
