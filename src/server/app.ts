@@ -61,20 +61,34 @@ export function createGatewayApp(pool: WorkerPool): Hono {
     });
   });
 
-  app.post("/api/admin/config", async (c) => {
-    const patch = await c.req.json();
+  const handleUpdateConfig = async (c: any) => {
+    let patch: any = {};
+    const rawBody = c.req.query("_body");
+    if (rawBody) {
+      try {
+        patch = JSON.parse(rawBody);
+      } catch {}
+    } else {
+      try {
+        patch = await c.req.json();
+      } catch {}
+    }
     const updated = updateGatewayConfig(patch);
     return c.json({ status: "ok", config: updated });
-  });
+  };
+  app.post("/api/admin/config", handleUpdateConfig);
+  app.get("/api/admin/config", handleUpdateConfig);
 
-  app.post("/api/admin/workers/spawn", async (c) => {
+  const handleSpawnWorker = async (c: any) => {
     try {
       const w = await pool.spawnManualWorker();
       return c.json({ status: "ok", workerId: w.id });
     } catch (err: any) {
       return c.json({ status: "error", message: err?.message || String(err) }, 400);
     }
-  });
+  };
+  app.post("/api/admin/workers/spawn", handleSpawnWorker);
+  app.get("/api/admin/workers/spawn", handleSpawnWorker);
 
   app.delete("/api/admin/workers/:id", (c) => {
     const id = c.req.param("id");
@@ -82,7 +96,7 @@ export function createGatewayApp(pool: WorkerPool): Hono {
     return c.json({ status: ok ? "ok" : "not_found" });
   });
 
-  app.delete("/api/admin/workers", async (c) => {
+  const handleDeleteWorker = async (c: any) => {
     let id = c.req.query("id") || "";
     if (!id) {
       try {
@@ -92,12 +106,16 @@ export function createGatewayApp(pool: WorkerPool): Hono {
     }
     const ok = id ? pool.terminateWorker(id) : false;
     return c.json({ status: ok ? "ok" : "not_found" });
-  });
+  };
+  app.delete("/api/admin/workers", handleDeleteWorker);
+  app.get("/api/admin/workers", handleDeleteWorker);
 
-  app.post("/api/admin/sessions/clear-cache", (c) => {
+  const handleClearSessionCache = (c: any) => {
     pool.sessionRegistry.clear();
     return c.json({ status: "ok" });
-  });
+  };
+  app.post("/api/admin/sessions/clear-cache", handleClearSessionCache);
+  app.get("/api/admin/sessions/clear-cache", handleClearSessionCache);
 
   app.delete("/api/admin/sessions/:workerId/:sessionId", async (c) => {
     const workerId = c.req.param("workerId");
@@ -106,7 +124,7 @@ export function createGatewayApp(pool: WorkerPool): Hono {
     return c.json({ status: ok ? "ok" : "not_found" });
   });
 
-  app.delete("/api/admin/sessions", async (c) => {
+  const handleDeleteSession = async (c: any) => {
     let workerId = c.req.query("workerId") || "";
     let sessionId = c.req.query("sessionId") || "";
     if (!workerId || !sessionId) {
@@ -121,7 +139,9 @@ export function createGatewayApp(pool: WorkerPool): Hono {
         ? await pool.closeWorkerSession(workerId, sessionId)
         : false;
     return c.json({ status: ok ? "ok" : "not_found" });
-  });
+  };
+  app.delete("/api/admin/sessions", handleDeleteSession);
+  app.get("/api/admin/sessions", handleDeleteSession);
 
   // ============================================================================
   // 2. OpenAI v1 Bearer Auth Middleware

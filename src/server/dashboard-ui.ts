@@ -25,6 +25,9 @@ const DASHBOARD_HTML = String.raw`<!DOCTYPE html>
     document.documentElement.setAttribute("data-theme", t);
     var l = localStorage.getItem("agy-layout");
     if (l === "top" || l === "side") document.documentElement.setAttribute("data-layout", l);
+    var emb = location.pathname.indexOf("/v0/resource/plugins/") === 0;
+    if (!emb) { try { emb = window.self !== window.top; } catch (e) {} }
+    if (emb) document.documentElement.setAttribute("data-embedded", "cpa");
   })();
 </script>
 <style>
@@ -268,6 +271,7 @@ const DASHBOARD_HTML = String.raw`<!DOCTYPE html>
   .field:focus-within > label { color:var(--primary); }
   .field-box input, .field-box select { flex:1; width:0; min-width:0; height:100%; border:0; outline:0; background:transparent; color:var(--on-surface); font-size:16px; }
   .field-box input.mono { font-size:14px; }
+  .field-box input.masked { -webkit-text-security:disc; }
   .field-box select { appearance:none; cursor:pointer; }
   .field-box select option { background:var(--sc-high); color:var(--on-surface); }
   .field-box .trail { pointer-events:none; color:var(--on-surface-variant); margin-right:8px; }
@@ -366,6 +370,8 @@ const DASHBOARD_HTML = String.raw`<!DOCTYPE html>
   html[data-layout="top"] .top-actions { display:flex; }
   html[data-layout="top"] .topbar { display:none; }
   html[data-layout="top"] .content { padding:24px 28px 40px; max-width:1600px; width:100%; margin:0 auto; }
+  html[data-embedded="cpa"] .topbar { padding-right:210px; }
+  html[data-embedded="cpa"][data-layout="top"] .drawer { padding-right:220px; }
   @media (max-width: 720px) {
     html[data-layout="top"] .drawer { padding:0 12px; gap:4px; }
     html[data-layout="top"] .brand-name { display:none; }
@@ -464,7 +470,7 @@ const DASHBOARD_HTML = String.raw`<!DOCTYPE html>
               <button type="button" class="icon-btn" data-act="copy-url" data-tip="复制"><span class="ms">content_copy</span></button></div>
           </div>
           <div class="field"><label>API Key</label>
-            <div class="field-box"><input id="f-apiKey" class="mono" type="password" autocomplete="off" spellcheck="false" />
+            <div class="field-box"><input id="f-apiKey" class="mono masked" type="text" autocomplete="off" data-1p-ignore="true" data-lpignore="true" spellcheck="false" />
               <button type="button" class="icon-btn" data-act="toggle-key" data-tip="显示"><span class="ms" id="key-eye">visibility</span></button>
               <button type="button" class="icon-btn" data-act="gen-key" data-tip="随机生成"><span class="ms">autorenew</span></button>
               <button type="button" class="icon-btn" data-act="copy-key" data-tip="复制"><span class="ms">content_copy</span></button></div>
@@ -582,15 +588,6 @@ const DASHBOARD_HTML = String.raw`<!DOCTYPE html>
   function resolveApiUrl(relPath) {
     var p = relPath.replace(/^\.?\//, "");
     var loc = location.pathname;
-    var cpaPrefix = "/v0/resource/plugins/";
-    if (loc.indexOf(cpaPrefix) === 0) {
-      var rest = loc.slice(cpaPrefix.length);
-      var slashIdx = rest.indexOf("/");
-      var pluginId = slashIdx >= 0 ? rest.slice(0, slashIdx) : rest;
-      if (pluginId && getCpaManagementKey()) {
-        return "/v0/management/plugins/" + pluginId + "/" + p;
-      }
-    }
     var baseDir = loc.endsWith("/") ? loc : loc.replace(/\/[^/]*$/, "/");
     return baseDir + p;
   }
@@ -951,9 +948,10 @@ const DASHBOARD_HTML = String.raw`<!DOCTYPE html>
     } else {
       $("f-url").value = location.origin + "/v1";
     }
-    if (S.dirty) return;
     fillModels(d);
+    if (S.cfgReady && S.dirty) return;
     if (S.cfgReady) return;
+    setDirty(false);
     $("f-apiKey").value = c.apiKey || "";
     $("f-model").value = c.defaultModel;
     S.level = c.defaultThinkingLevel || "medium";
@@ -1074,12 +1072,28 @@ const DASHBOARD_HTML = String.raw`<!DOCTYPE html>
   function closeSheet() { S.sheet = null; $("sheet").classList.remove("on"); $("scrim").classList.remove("on"); }
 
   /* ---------- infra ---------- */
+  function resolveResourceUrl(relPath) {
+    var p = relPath.replace(/^\.?\//, "");
+    var loc = location.pathname;
+    var baseDir = loc.endsWith("/") ? loc : loc.replace(/\/[^/]*$/, "/");
+    return baseDir + p;
+  }
   async function api(method, url, body) {
     var hdrs = {};
-    if (body) hdrs["Content-Type"] = "application/json";
     var mgmtKey = getCpaManagementKey();
     if (mgmtKey) hdrs["Authorization"] = "Bearer " + mgmtKey;
-    var r = await fetch(resolveApiUrl(url), { method: method, headers: Object.keys(hdrs).length ? hdrs : undefined, body: body ? JSON.stringify(body) : undefined });
+    var isCpaResource = location.pathname.indexOf("/v0/resource/plugins/") === 0;
+    var r;
+    if (isCpaResource && method !== "GET") {
+      var resUrl = resolveResourceUrl(url);
+      var sep = resUrl.indexOf("?") >= 0 ? "&" : "?";
+      var tunnelUrl = resUrl + sep + "_method=" + encodeURIComponent(method);
+      if (body) tunnelUrl += "&_body=" + encodeURIComponent(JSON.stringify(body));
+      r = await fetch(tunnelUrl, { method: "GET", cache: "no-store", headers: Object.keys(hdrs).length ? hdrs : undefined });
+    } else {
+      if (body) hdrs["Content-Type"] = "application/json";
+      r = await fetch(resolveApiUrl(url), { method: method, headers: Object.keys(hdrs).length ? hdrs : undefined, body: body ? JSON.stringify(body) : undefined });
+    }
     var j = {};
     try { j = await r.json(); } catch (e) {}
     if (!r.ok || j.status === "error" || j.status === "not_found") throw new Error(j.message || j.status || "HTTP " + r.status);
@@ -1210,14 +1224,14 @@ const DASHBOARD_HTML = String.raw`<!DOCTYPE html>
       else if (a === "copy-url") copyText($("f-url").value);
       else if (a === "copy-key") copyText($("f-apiKey").value);
       else if (a === "toggle-key") {
-        var k = $("f-apiKey"), show = k.type === "password";
-        k.type = show ? "text" : "password"; $("key-eye").textContent = show ? "visibility_off" : "visibility";
+        var k = $("f-apiKey"), show = k.classList.contains("masked");
+        k.classList.toggle("masked", !show); $("key-eye").textContent = show ? "visibility_off" : "visibility";
       }
       else if (a === "gen-key") {
         var chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", buf = new Uint32Array(32), out = "sk-agy-";
         crypto.getRandomValues(buf);
         for (var i = 0; i < buf.length; i++) out += chars.charAt(buf[i] % chars.length);
-        $("f-apiKey").value = out; $("f-apiKey").type = "text"; $("key-eye").textContent = "visibility_off"; setDirty(true);
+        $("f-apiKey").value = out; $("f-apiKey").classList.remove("masked"); $("key-eye").textContent = "visibility_off"; setDirty(true);
       }
       else if (a === "lv-pick") { S.level = el.getAttribute("data-v"); renderLevel(); setDirty(true); }
       else if (a === "layout-pick") {
@@ -1235,7 +1249,7 @@ const DASHBOARD_HTML = String.raw`<!DOCTYPE html>
     } catch (err) { snack(err && err.message ? err.message : String(err), true); }
   });
 
-  $("settings-form").addEventListener("input", function () { setDirty(true); });
+  $("settings-form").addEventListener("input", function () { if (!S.cfgReady) return; setDirty(true); });
   $("q").addEventListener("input", function (e) { S.q = e.target.value; if (S.d) renderTraffic(S.d); });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && S.sheet) closeSheet(); });
 

@@ -325,6 +325,22 @@ func (a *App) handleManagement(raw []byte) ([]byte, error) {
 		targetPath = path
 	}
 
+	method := req.Method
+	bodyBytes := req.Body
+	if len(req.Query) > 0 {
+		if m := strings.TrimSpace(req.Query.Get("_method")); m != "" {
+			method = strings.ToUpper(m)
+			req.Query.Del("_method")
+		}
+		if b := req.Query.Get("_body"); b != "" && len(bodyBytes) == 0 {
+			bodyBytes = []byte(b)
+			req.Query.Del("_body")
+		}
+	}
+	if method == "" {
+		method = http.MethodGet
+	}
+
 	targetURL := upstream + targetPath
 	if len(req.Query) > 0 {
 		q := req.Query.Encode()
@@ -333,12 +349,7 @@ func (a *App) handleManagement(raw []byte) ([]byte, error) {
 		}
 	}
 
-	method := req.Method
-	if method == "" {
-		method = http.MethodGet
-	}
-
-	httpReq, err := http.NewRequest(method, targetURL, bytes.NewReader(req.Body))
+	httpReq, err := http.NewRequest(method, targetURL, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return OKEnvelope(a.offlineResponse(targetPath, upstream, err))
 	}
@@ -349,6 +360,9 @@ func (a *App) handleManagement(raw []byte) ([]byte, error) {
 		for _, v := range vals {
 			httpReq.Header.Add(k, v)
 		}
+	}
+	if len(bodyBytes) > 0 && httpReq.Header.Get("Content-Type") == "" {
+		httpReq.Header.Set("Content-Type", "application/json")
 	}
 
 	resp, err := a.client.Do(httpReq)
