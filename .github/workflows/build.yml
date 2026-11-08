@@ -141,40 +141,32 @@ jobs:
           VERSION="${RELEASE_TAG#v}"
           sort dist/*.sha256 > dist/checksums.txt
 
-          # 1. Generate schema_version 2 (direct raw.githubusercontent.com) registry.json
-          RAW_BASE="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/releases-assets"
-          go run ./cpa-plugin/scripts/generate-registry.go \
-            -dist dist \
-            -version "${VERSION}" \
-            -base-url "${RAW_BASE}" \
-            -out dist/registry.json
+          # 1. Copy built zip files into cpa-plugin/releases/ and generate schema_version 2 registry.json
+          mkdir -p cpa-plugin/releases
+          cp dist/*.zip dist/checksums.txt cpa-plugin/releases/
 
-          # 2. Push zip artifacts + registry.json to releases-assets branch for direct raw download
+          RAW_BASE="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/cpa-plugin/releases"
+          (
+            cd cpa-plugin
+            go run ./scripts/generate-registry.go \
+              -dist ../dist \
+              -version "${VERSION}" \
+              -base-url "${RAW_BASE}" \
+              -out ../registry.json
+          )
+          cp registry.json cpa-plugin/registry.json
+
+          # 2. Commit & push pre-built releases and registry.json to main
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          WORK_DIR=$(mktemp -d)
-          cp dist/*.zip dist/checksums.txt dist/registry.json "${WORK_DIR}/"
-          pushd "${WORK_DIR}"
-          git init
-          git checkout -b releases-assets
-          git add .
-          git commit -m "chore: publish direct plugin assets for ${RELEASE_TAG} [skip ci]"
-          git push --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" releases-assets:releases-assets
-          popd
-
-          # 3. Update registry.json on main branch so main/registry.json uses direct raw URLs
-          if [[ "${GITHUB_REF_NAME}" == "main" ]]; then
-            cp dist/registry.json registry.json
-            cp dist/registry.json cpa-plugin/registry.json
-            if ! git diff --quiet registry.json cpa-plugin/registry.json; then
-              git add registry.json cpa-plugin/registry.json
-              git commit -m "chore: update registry.json with direct raw artifact URLs [skip ci]"
-              git push origin HEAD:main
-            fi
+          git add cpa-plugin/releases/ registry.json cpa-plugin/registry.json
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: publish direct plugin assets and registry.json for ${RELEASE_TAG} [skip ci]"
+            git pull --rebase origin main || true
+            git push origin HEAD:main
           fi
 
-          # 4. Also update GitHub Release
+          # 3. Also update GitHub Release
           if gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
             gh release upload "${RELEASE_TAG}" dist/*.zip dist/checksums.txt --clobber --repo "${GITHUB_REPOSITORY}"
           else
