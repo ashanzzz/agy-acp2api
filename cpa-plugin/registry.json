@@ -26,37 +26,37 @@
           {
             "goos": "darwin",
             "goarch": "amd64",
-            "url": "https://raw.githubusercontent.com/chengdidididi/agy-acp2api/main/cpa-plugin/releases/agy-acp2api_0.1.0_darwin_amd64.zip",
-            "sha256": "2d035cc12ba7be45ddfb5b628722d15efc07d927a32ee37c080d3cd589030030",
-            "size": 2657835
+            "url": "https://raw.githubusercontent.com/ashanzzz/agy-acp2api/main/cpa-plugin/releases/agy-acp2api_0.1.0_darwin_amd64.zip",
+            "sha256": "2c7b1e0504bc989c344ecde32cbe87eaf3f3239968ca6a72c17a43747908fba1",
+            "size": 2657838
           },
           {
             "goos": "darwin",
             "goarch": "arm64",
-            "url": "https://raw.githubusercontent.com/chengdidididi/agy-acp2api/main/cpa-plugin/releases/agy-acp2api_0.1.0_darwin_arm64.zip",
-            "sha256": "1dcea2aa9968d7559e0f877b2816282ddfdf777f0ef838a7cdf831332564ed39",
-            "size": 2494499
+            "url": "https://raw.githubusercontent.com/ashanzzz/agy-acp2api/main/cpa-plugin/releases/agy-acp2api_0.1.0_darwin_arm64.zip",
+            "sha256": "cba419dad77ff485eafd6c93400e109c5c0cee72cfef085a1a3a25e7d69026a4",
+            "size": 2494502
           },
           {
             "goos": "linux",
             "goarch": "amd64",
-            "url": "https://raw.githubusercontent.com/chengdidididi/agy-acp2api/main/cpa-plugin/releases/agy-acp2api_0.1.0_linux_amd64.zip",
-            "sha256": "d08dd86b1ea4482f201eb3e318851cd39fdce16a46019075dbc5ba3aaf71d308",
-            "size": 2790394
+            "url": "https://raw.githubusercontent.com/ashanzzz/agy-acp2api/main/cpa-plugin/releases/agy-acp2api_0.1.0_linux_amd64.zip",
+            "sha256": "9d32df4c7926beaa154fddbde616edafe2c7cd4cb633df0e659b38b8f901a623",
+            "size": 2790395
           },
           {
             "goos": "linux",
             "goarch": "arm64",
-            "url": "https://raw.githubusercontent.com/chengdidididi/agy-acp2api/main/cpa-plugin/releases/agy-acp2api_0.1.0_linux_arm64.zip",
-            "sha256": "121bb3a2cd9cc6bb25c4c5e29cec18e59eba4424854315c99b968c6104b05547",
-            "size": 2577267
+            "url": "https://raw.githubusercontent.com/ashanzzz/agy-acp2api/main/cpa-plugin/releases/agy-acp2api_0.1.0_linux_arm64.zip",
+            "sha256": "5175b013d5322572012f5d03a0c9f1a5f4892418bea3ece68ff437493ce3ecbe",
+            "size": 2577269
           },
           {
             "goos": "windows",
             "goarch": "amd64",
-            "url": "https://raw.githubusercontent.com/chengdidididi/agy-acp2api/main/cpa-plugin/releases/agy-acp2api_0.1.0_windows_amd64.zip",
-            "sha256": "d0ef7d1b7c01b89a5f7959589dd13d1b50f443ed1226815f853508243a90fe90",
-            "size": 2719209
+            "url": "https://raw.githubusercontent.com/ashanzzz/agy-acp2api/main/cpa-plugin/releases/agy-acp2api_0.1.0_windows_amd64.zip",
+            "sha256": "127988ad0d3b0b20207f24c37d89e85496667687bf57d8b06d7e2b3dc9b07666",
+            "size": 2719212
           }
         ]
       }
