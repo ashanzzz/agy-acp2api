@@ -5,10 +5,12 @@ import { AddressInfo } from "node:net";
 const UPSTREAM_HOST = "daily-cloudcode-pa.googleapis.com";
 const UPSTREAM_BASE = `https://${UPSTREAM_HOST}`;
 
-const sharedHttpsAgent = new https.Agent({
-  keepAlive: true,
-  maxSockets: 32,
-});
+import { HttpsProxyAgent } from "https-proxy-agent";
+
+const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY;
+const sharedHttpsAgent = proxyUrl
+  ? new HttpsProxyAgent(proxyUrl, { keepAlive: true, maxSockets: 32 })
+  : new https.Agent({ keepAlive: true, maxSockets: 32 });
 
 export class CcpaModelSniffer {
   private server: http.Server | null = null;
