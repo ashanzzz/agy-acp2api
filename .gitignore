@@ -16,6 +16,8 @@ settings.json
 # Temporary test files & logs
 .tmp*
 *.log
+*.pid
+.agy2api.pid
 npm-debug.log*
 
 # OS & IDE files
